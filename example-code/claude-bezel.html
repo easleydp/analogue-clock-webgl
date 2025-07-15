@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clock Bezel - Three.js</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background: #1a1a1a;
+        overflow: hidden;
+        font-family: Arial, sans-serif;
+      }
+
+      #info {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        color: white;
+        font-size: 14px;
+        z-index: 100;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="info">Clock Bezel - Rotate with mouse, zoom with scroll</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+      // Scene setup
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+      );
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setClearColor(0x222222);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      document.body.appendChild(renderer.domElement);
+
+      // Create the bezel profile points
+      // Starting from the outer edge, creating a curved profile with a recessed valley
+      const points = [];
+      const segments = 20;
+
+      // Outer rim (top edge)
+      points.push(new THREE.Vector2(1.0, 0.15));
+      points.push(new THREE.Vector2(0.98, 0.12));
+
+      // Curved slope down
+      for (let i = 0; i < 8; i++) {
+        const t = i / 7;
+        const x = 0.98 - t * 0.15; // From 0.98 to 0.83
+        const y = 0.12 - t * 0.08; // From 0.12 to 0.04
+        // Add slight curve
+        const curve = Math.sin(t * Math.PI * 0.5) * 0.02;
+        points.push(new THREE.Vector2(x + curve, y));
+      }
+
+      // Recessed valley (the key feature)
+      points.push(new THREE.Vector2(0.82, 0.02));
+      points.push(new THREE.Vector2(0.8, 0.01));
+      points.push(new THREE.Vector2(0.78, 0.01));
+      points.push(new THREE.Vector2(0.76, 0.02));
+
+      // Inner slope up to the center
+      for (let i = 0; i < 6; i++) {
+        const t = i / 5;
+        const x = 0.76 - t * 0.16; // From 0.76 to 0.60
+        const y = 0.02 + t * 0.08; // From 0.02 to 0.10
+        points.push(new THREE.Vector2(x, y));
+      }
+
+      // Inner rim
+      points.push(new THREE.Vector2(0.6, 0.1));
+      points.push(new THREE.Vector2(0.58, 0.08));
+      points.push(new THREE.Vector2(0.58, 0.0));
+
+      // Create the LatheGeometry
+      const geometry = new THREE.LatheGeometry(points, 64);
+
+      // Create gold material
+      const material = new THREE.MeshStandardMaterial({
+        color: 0xffd700,
+        metalness: 0.8,
+        roughness: 0.2,
+        side: THREE.DoubleSide,
+      });
+
+      // Create the bezel mesh
+      const bezel = new THREE.Mesh(geometry, material);
+
+      // Scale up the bezel to a reasonable size
+      bezel.scale.set(3, 3, 3);
+
+      // Rotate so the clock face points toward the camera
+      // The lathe creates geometry along the Y axis, so we need to rotate
+      bezel.rotation.x = 0; // Keep it upright for clock orientation
+
+      scene.add(bezel);
+
+      // Lighting setup
+      const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
+      scene.add(ambientLight);
+
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight.position.set(5, 5, 5);
+      directionalLight.castShadow = true;
+      directionalLight.shadow.mapSize.width = 2048;
+      directionalLight.shadow.mapSize.height = 2048;
+      scene.add(directionalLight);
+
+      // Add a rim light for better gold appearance
+      const rimLight = new THREE.DirectionalLight(0xffffff, 0.3);
+      rimLight.position.set(-5, 2, -5);
+      scene.add(rimLight);
+
+      // Camera position
+      camera.position.set(0, 0, 8);
+      camera.lookAt(0, 0, 0);
+
+      // Mouse controls
+      let mouseX = 0;
+      let mouseY = 0;
+      let isMouseDown = false;
+      let rotationX = 0;
+      let rotationY = 0;
+
+      document.addEventListener("mousedown", (e) => {
+        isMouseDown = true;
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+      });
+
+      document.addEventListener("mouseup", () => {
+        isMouseDown = false;
+      });
+
+      document.addEventListener("mousemove", (e) => {
+        if (isMouseDown) {
+          const deltaX = e.clientX - mouseX;
+          const deltaY = e.clientY - mouseY;
+
+          rotationY += deltaX * 0.01;
+          rotationX += deltaY * 0.01;
+
+          // Clamp vertical rotation
+          rotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationX));
+
+          mouseX = e.clientX;
+          mouseY = e.clientY;
+        }
+      });
+
+      // Zoom with mouse wheel
+      document.addEventListener("wheel", (e) => {
+        const zoomSpeed = 0.1;
+        const zoom = e.deltaY > 0 ? 1 + zoomSpeed : 1 - zoomSpeed;
+        camera.position.multiplyScalar(zoom);
+
+        // Clamp zoom
+        const distance = camera.position.length();
+        if (distance < 2) {
+          camera.position.normalize().multiplyScalar(2);
+        } else if (distance > 20) {
+          camera.position.normalize().multiplyScalar(20);
+        }
+      });
+
+      // Animation loop
+      function animate() {
+        requestAnimationFrame(animate);
+
+        // Apply rotations
+        bezel.rotation.y = rotationY;
+        bezel.rotation.x = rotationX;
+
+        renderer.render(scene, camera);
+      }
+
+      // Handle window resize
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // Start animation
+      animate();
+    </script>
+  </body>
+</html>
