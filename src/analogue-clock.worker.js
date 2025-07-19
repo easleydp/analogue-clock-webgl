@@ -5,6 +5,8 @@ class AnalogueClockRenderer {
   constructor() {
     this.options = {};
 
+    this.sceneWidth = 1.1;
+    this.sceneHeight = 1.1;
     this.clockDiameter = 1;
 
     this.isRunning = false;
@@ -22,6 +24,7 @@ class AnalogueClockRenderer {
     // TODO: review these options (are they all actually used?)
     this.options = {
       textColor: "#1C1C1C",
+      markerColor: "#1C1C1C",
       fontFamily: "Arial, sans-serif",
       faceColor: "#F5F5DC",
       secondHandColor: "rgb(255, 40, 40)",
@@ -36,7 +39,6 @@ class AnalogueClockRenderer {
     this.isRunning = true;
 
     this.scene = new THREE.Scene();
-    this.scene.visible = false; // Wait until all the textLines are initialised
 
     // ## Camera Setup ##
     // The initial camera setup. The aspect ratio and fov will be adjusted
@@ -89,7 +91,100 @@ class AnalogueClockRenderer {
     scene.add(rimLight);
   }
 
-  _createFace() {}
+  _createTextSprite(
+    text,
+    { fontSize = 128, fontFamily = "Arial", color = "#000000" }
+  ) {
+    const canvas = new OffscreenCanvas(256, 256);
+    const ctx = canvas.getContext("2d");
+    ctx.font = `${fontSize}px ${fontFamily}`;
+    ctx.fillStyle = color;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, 128, 128);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({ map: texture });
+    const sprite = new THREE.Sprite(material);
+    return sprite;
+  }
+
+  _createFace() {
+    const radius = this.clockDiameter / 2;
+    const faceGroup = new THREE.Group();
+    this.scene.add(faceGroup);
+
+    // Create the clock face
+    const faceGeometry = new THREE.CircleGeometry(radius, 64);
+    const faceMaterial = new THREE.MeshBasicMaterial({
+      color: this.options.faceColor,
+    });
+    const faceMesh = new THREE.Mesh(faceGeometry, faceMaterial);
+    faceMesh.receiveShadow = true;
+    faceGroup.add(faceMesh);
+
+    // Create markers
+    const markerMaterial = new THREE.MeshBasicMaterial({
+      color: this.options.markerColor,
+    });
+    const markersGroup = new THREE.Group();
+    markersGroup.position.z = 0.01; // Slightly in front of the face
+    faceGroup.add(markersGroup);
+
+    const markersRadius = radius * 0.9;
+
+    for (let i = 0; i < 60; i++) {
+      const angle = (i / 60) * Math.PI * 2;
+      const isMajor = i % 5 === 0;
+
+      let marker;
+      if (isMajor) {
+        const geometry = new THREE.CircleGeometry(radius * 0.02, 16);
+        marker = new THREE.Mesh(geometry, markerMaterial);
+        marker.position.x = Math.sin(angle) * markersRadius;
+        marker.position.y = Math.cos(angle) * markersRadius;
+      } else {
+        const geometry = new THREE.PlaneGeometry(radius * 0.01, radius * 0.04);
+        marker = new THREE.Mesh(geometry, markerMaterial);
+        marker.position.x = Math.sin(angle) * markersRadius;
+        marker.position.y = Math.cos(angle) * markersRadius;
+        marker.rotation.z = -angle;
+      }
+      markersGroup.add(marker);
+    }
+
+    // Create numerals
+    const numeralsGroup = new THREE.Group();
+    numeralsGroup.position.z = 0.01;
+    faceGroup.add(numeralsGroup);
+    const numeralsRadius = radius * 0.78;
+
+    for (let h = 1; h <= 12; h++) {
+      const angle = -(h / 12) * Math.PI * 2 + Math.PI / 2;
+      const numeral = this._createTextSprite(h.toString(), {
+        fontFamily: this.options.fontFamily,
+        color: this.options.textColor,
+      });
+
+      numeral.position.x = Math.cos(angle) * numeralsRadius;
+      numeral.position.y = Math.sin(angle) * numeralsRadius;
+      numeral.scale.set(radius * 0.2, radius * 0.2, 1);
+      numeralsGroup.add(numeral);
+    }
+
+    // Create brand text
+    if (this.options.brand) {
+      const brandSprite = this._createTextSprite(this.options.brand, {
+        fontSize: 64,
+        fontFamily: this.options.fontFamily,
+        color: this.options.textColor,
+      });
+      brandSprite.position.y = radius * 0.35;
+      brandSprite.scale.set(radius * 0.25, radius * 0.25, 1);
+      faceGroup.add(brandSprite);
+    }
+  }
+
   _createPinAndBezel() {}
   _createHands() {}
 
