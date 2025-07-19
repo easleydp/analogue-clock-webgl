@@ -28,6 +28,14 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
+      const TAU = 2 * Math.PI;
+      const PI = Math.PI;
+      const HALF_PI = Math.PI / 2;
+
+      function wrapAngle(angle) {
+        return THREE.MathUtils.euclideanModulo(angle, TAU);
+      }
+
       // Scene setup
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(
@@ -43,46 +51,134 @@
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       document.body.appendChild(renderer.domElement);
 
-      // Create the bezel profile points
-      // Starting from the outer edge, creating a curved profile with a recessed valley
-      const points = [];
-      const segments = 20;
+      /**
+       * Generates an array of THREE.Vector2 points forming a circular curve
+       * between a start and end point.
+       *
+       * @param {THREE.Vector2} startPoint - The starting point of the curve.
+       * @param {THREE.Vector2} endPoint - The ending point of the curve.
+       * @param {number} sweep - The sweep angle of the curve in radians (<= Math.PI).
+       * @param {number} intermediatePointCount - The number of intermediate points.
+       * @returns {Array<THREE.Vector2>} An array of points, including start and end.
+       */
+      const generateCurvePoints = (
+        startPoint,
+        endPoint,
+        sweep,
+        intermediatePointCount
+      ) => {
+        const points = [];
+        const chordLength = startPoint.distanceTo(endPoint);
+        const nSegments = intermediatePointCount + 1;
 
-      // Outer rim (top edge)
-      points.push(new THREE.Vector2(1.0, 0.15));
-      points.push(new THREE.Vector2(0.98, 0.12));
+        // Edge cases: straight line for zero distance or zero angle
+        if (chordLength < 1e-6 || Math.abs(sweep) < 1e-6) {
+          points.push(startPoint.clone());
+          points.push(endPoint.clone());
+          return points;
+        }
 
-      // Curved slope down
-      for (let i = 0; i < 8; i++) {
-        const t = i / 7;
-        const x = 0.98 - t * 0.15; // From 0.98 to 0.83
-        const y = 0.12 - t * 0.08; // From 0.12 to 0.04
-        // Add slight curve
-        const curve = Math.sin(t * Math.PI * 0.5) * 0.02;
-        points.push(new THREE.Vector2(x + curve, y));
-      }
+        const radius = chordLength / (2 * Math.sin(sweep / 2));
+        const h_center = Math.sqrt(
+          Math.max(0, radius * radius - (chordLength / 2) * (chordLength / 2))
+        );
+        const midpoint = new THREE.Vector2()
+          .addVectors(startPoint, endPoint)
+          .multiplyScalar(0.5);
+        const delta = new THREE.Vector2().subVectors(endPoint, startPoint);
+        const perpDir = new THREE.Vector2(-delta.y, delta.x).normalize();
 
-      // Recessed valley (the key feature)
-      points.push(new THREE.Vector2(0.82, 0.02));
-      points.push(new THREE.Vector2(0.8, 0.01));
-      points.push(new THREE.Vector2(0.78, 0.01));
-      points.push(new THREE.Vector2(0.76, 0.02));
+        const center = new THREE.Vector2().subVectors(
+          midpoint,
+          perpDir.clone().multiplyScalar(h_center)
+        );
 
-      // Inner slope up to the center
-      for (let i = 0; i < 6; i++) {
-        const t = i / 5;
-        const x = 0.76 - t * 0.16; // From 0.76 to 0.60
-        const y = 0.02 + t * 0.08; // From 0.02 to 0.10
-        points.push(new THREE.Vector2(x, y));
-      }
+        const vec_C_to_S = new THREE.Vector2().subVectors(startPoint, center);
+        const vec_C_to_E = new THREE.Vector2().subVectors(endPoint, center);
 
-      // Inner rim
-      points.push(new THREE.Vector2(0.6, 0.1));
-      points.push(new THREE.Vector2(0.58, 0.08));
-      points.push(new THREE.Vector2(0.58, 0.0));
+        // Determine the direction of rotation.
+        let rotSign = Math.sign(vec_C_to_S.cross(vec_C_to_E));
+
+        // Fallback for semi-circles (angle=PI) where vectors are collinear.
+        if (rotSign === 0) {
+          rotSign = -Math.sign(perpDir.cross(vec_C_to_S));
+        }
+
+        const angleIncrement = (rotSign * sweep) / nSegments;
+
+        points.push(startPoint.clone());
+        for (let i = 1; i <= intermediatePointCount; i++) {
+          const currentAngle = i * angleIncrement;
+          const pointOnCircle = vec_C_to_S
+            .clone()
+            .rotateAround(new THREE.Vector2(0, 0), currentAngle);
+          points.push(pointOnCircle.add(center));
+        }
+        points.push(endPoint.clone());
+
+        return points;
+      };
+
+      const generatePoints = ({
+        radius,
+        pinHoleRadius,
+        pinRadius,
+        pinH1,
+        pinH2,
+        bezelDiagH,
+        bezelDiagW,
+        bezelCurveW,
+        curveSegments,
+      }) => {
+        if (radius === undefined) throw new Error("radius must be specified");
+        pinRadius = pinRadius || radius / 50;
+        pinHoleRadius = pinHoleRadius || pinRadius / 4;
+        if (pinRadius >= radius)
+          throw new Error("pinRadius must be less than radius");
+        if (pinRadius <= pinHoleRadius)
+          throw new Error("pinRadius must be greater than pinHoleRadius");
+        bezelDiagW = bezelDiagW || radius / 40;
+        bezelDiagH = bezelDiagH || bezelDiagW * 2;
+        bezelCurveW = bezelCurveW || bezelDiagW * 2;
+        pinH1 = pinH1 || bezelDiagH * 1.5;
+        pinH2 = pinH2 || pinH1 + pinRadius / 3;
+        if (pinH1 >= pinH2) throw new Error("pinH1 must be less than pinH2");
+        curveSegments = curveSegments || 12;
+
+        const points = [];
+
+        // Pin start
+        points.push(new THREE.Vector2(pinHoleRadius, pinH1));
+        points.push(new THREE.Vector2(pinHoleRadius, pinH2));
+        // Pin's outer edge is small curved bevel
+        points.push(
+          ...generateCurvePoints(
+            new THREE.Vector2(pinRadius, pinH2),
+            new THREE.Vector2(pinRadius + pinH2 - pinH1, pinH1),
+            HALF_PI,
+            4
+          )
+        );
+        // Terminate the pin with a point with y=0
+        points.push(new THREE.Vector2(pinRadius + pinH2 - pinH1, 0));
+
+        // Bezel starts with a diagonal up from y=0 and terminates with a curve down to y=0
+        points.push(new THREE.Vector2(radius - bezelDiagW - bezelCurveW, 0));
+        points.push(
+          ...generateCurvePoints(
+            new THREE.Vector2(radius - bezelCurveW, bezelDiagH),
+            new THREE.Vector2(radius, 0),
+            PI,
+            curveSegments
+          )
+        );
+
+        return points;
+      };
 
       // Create the LatheGeometry
-      const geometry = new THREE.LatheGeometry(points, 64);
+      const points = generatePoints({ radius: 1 });
+      const geometry = new THREE.LatheGeometry(points, 96);
 
       // Create gold material
       const material = new THREE.MeshStandardMaterial({
@@ -96,7 +192,7 @@
       const bezel = new THREE.Mesh(geometry, material);
 
       // Scale up the bezel to a reasonable size
-      bezel.scale.set(3, 3, 3);
+      bezel.scale.set(4, 4, 4);
 
       // Rotate so the clock face points toward the camera
       // The lathe creates geometry along the Y axis, so we need to rotate
