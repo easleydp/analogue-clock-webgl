@@ -25,7 +25,7 @@ class AnalogueClockRenderer {
     this.options = {
       textColor: "#1C1C1C",
       markerColor: "#1C1C1C",
-      fontFamily: "Arial, sans-serif",
+      fontFamily: '"Work Sans", "Trebuchet MS", sans-serif',
       faceColor: "#F5F5DC",
       secondHandColor: "rgb(255, 40, 40)",
       minuteHandColor: "#1C1C1C",
@@ -62,6 +62,7 @@ class AnalogueClockRenderer {
     // ## Lighting ##
     this._createLighting(this.scene);
 
+    await this._loadFont();
     this._createFace();
     this._createPinAndBezel();
     this._createHands();
@@ -72,6 +73,18 @@ class AnalogueClockRenderer {
     // Start animation
     this._animationLoop = this._animationLoop.bind(this);
     this.animationFrameId = self.requestAnimationFrame(this._animationLoop);
+  }
+
+  /**
+   * Being a web worker, we don't have access to any fonts loaded in the main thread.
+   * Hence, we need to explicitly load the web font.
+   */
+  async _loadFont() {
+    const fontUrl =
+      "https://fonts.gstatic.com/s/worksans/v23/QGY_z_wNahGAdqQ43RhVcIgYT2Xz5u32KxfXBi8Jpg.woff2";
+    const fontFace = new FontFace("Work Sans", `url(${fontUrl})`);
+    await fontFace.load();
+    self.fonts.add(fontFace);
   }
 
   _createLighting(scene) {
@@ -93,15 +106,17 @@ class AnalogueClockRenderer {
 
   _createTextSprite(
     text,
-    { fontSize = 128, fontFamily = "Arial", color = "#000000" }
+    { fontSize = 128, fontFamily = "sans-serif", color = "#000000" }
   ) {
     const canvas = new OffscreenCanvas(256, 256);
     const ctx = canvas.getContext("2d");
+
     ctx.font = `${fontSize}px ${fontFamily}`;
     ctx.fillStyle = color;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(text, 128, 128);
+    const yFudge = 10; // a tad lower please (for numerals especially)
+    ctx.fillText(text, 128, 128 + yFudge);
 
     const texture = new THREE.CanvasTexture(canvas);
     const material = new THREE.SpriteMaterial({ map: texture });
@@ -131,7 +146,7 @@ class AnalogueClockRenderer {
     markersGroup.position.z = 0.01; // Slightly in front of the face
     faceGroup.add(markersGroup);
 
-    const markersRadius = radius * 0.9;
+    const markersRadius = radius * 0.88;
 
     for (let i = 0; i < 60; i++) {
       const angle = (i / 60) * Math.PI * 2;
@@ -139,12 +154,12 @@ class AnalogueClockRenderer {
 
       let marker;
       if (isMajor) {
-        const geometry = new THREE.CircleGeometry(radius * 0.02, 16);
+        const geometry = new THREE.CircleGeometry(radius * 0.01, 16);
         marker = new THREE.Mesh(geometry, markerMaterial);
         marker.position.x = Math.sin(angle) * markersRadius;
         marker.position.y = Math.cos(angle) * markersRadius;
       } else {
-        const geometry = new THREE.PlaneGeometry(radius * 0.01, radius * 0.04);
+        const geometry = new THREE.PlaneGeometry(radius * 0.003, radius * 0.04);
         marker = new THREE.Mesh(geometry, markerMaterial);
         marker.position.x = Math.sin(angle) * markersRadius;
         marker.position.y = Math.cos(angle) * markersRadius;
@@ -157,13 +172,14 @@ class AnalogueClockRenderer {
     const numeralsGroup = new THREE.Group();
     numeralsGroup.position.z = 0.01;
     faceGroup.add(numeralsGroup);
-    const numeralsRadius = radius * 0.78;
+    const numeralsRadius = markersRadius * 0.82;
 
     for (let h = 1; h <= 12; h++) {
       const angle = -(h / 12) * Math.PI * 2 + Math.PI / 2;
       const numeral = this._createTextSprite(h.toString(), {
         fontFamily: this.options.fontFamily,
         color: this.options.textColor,
+        fontSize: 210,
       });
 
       numeral.position.x = Math.cos(angle) * numeralsRadius;
@@ -174,11 +190,20 @@ class AnalogueClockRenderer {
 
     // Create brand text
     if (this.options.brand) {
-      const brandSprite = this._createTextSprite(this.options.brand, {
-        fontSize: 64,
-        fontFamily: this.options.fontFamily,
-        color: this.options.textColor,
-      });
+      const increaseLetterSpacing = (text) => {
+        // You can't set the letter spacing property, but you you can accomplish wider letter spacing
+        // in canvas by inserting one of the various white spaces in between every letter in the string.
+        // Credit: https://stackoverflow.com/a/14991381
+        return text.split("").join(String.fromCharCode(8202));
+      };
+      const brandSprite = this._createTextSprite(
+        increaseLetterSpacing(this.options.brand),
+        {
+          fontSize: 42,
+          fontFamily: this.options.fontFamily,
+          color: this.options.textColor,
+        }
+      );
       brandSprite.position.y = radius * 0.35;
       brandSprite.scale.set(radius * 0.25, radius * 0.25, 1);
       faceGroup.add(brandSprite);
