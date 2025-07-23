@@ -7,7 +7,7 @@ class AnalogueClockRenderer {
 
     this.sceneWidth = 1.1;
     this.sceneHeight = 1.1;
-    this.clockDiameter = 1; // Includes bezel (this.faceDiameter will be set once we've created the bezel)
+    this.clockRadius = 0.5; // Includes bezel (this.faceRadius will be set once we've created the bezel)
 
     this.isRunning = false;
     this.animationFrameId = null;
@@ -65,7 +65,7 @@ class AnalogueClockRenderer {
     this._createGoldMaterial();
     this._createPin();
     this._createBezel();
-    // _createFace() depends on _createBezel() having been called to initialise this.faceDiameter
+    // _createFace() depends on _createBezel() having been called to initialise this.faceRadius
     this._createFace();
     this._createHands();
 
@@ -201,9 +201,9 @@ class AnalogueClockRenderer {
   }
 
   _createPin() {
-    const pinRadius = this.clockDiameter / 100;
+    const pinRadius = this.clockRadius / 50;
     const pinHoleRadius = pinRadius / 4;
-    const pinH1 = this.clockDiameter / 28;
+    const pinH1 = this.clockRadius / 14;
     const pinH2 = pinH1 + pinRadius / 3;
 
     const points = [];
@@ -233,22 +233,21 @@ class AnalogueClockRenderer {
   }
 
   _createBezel() {
-    const bezelDiagW = this.clockDiameter / 80;
+    const bezelDiagW = this.clockRadius / 40;
     const bezelDiagH = bezelDiagW * 2;
     const bezelCurveW = bezelDiagW * 2;
     const curveSegments = 12;
 
-    this.faceDiameter = this.clockDiameter - (bezelDiagW + bezelCurveW) * 2;
-    const faceRadius = this.faceDiameter / 2;
+    this.faceRadius = this.clockRadius - (bezelDiagW + bezelCurveW);
 
     const points = [];
 
     // Bezel starts with a diagonal up from y=0 and terminates with a curve down to y=0
-    points.push(new THREE.Vector2(faceRadius, 0));
+    points.push(new THREE.Vector2(this.faceRadius, 0));
     points.push(
       ...this._generateCurvePoints(
-        new THREE.Vector2(faceRadius + bezelDiagW, bezelDiagH),
-        new THREE.Vector2(this.clockDiameter / 2, 0),
+        new THREE.Vector2(this.faceRadius + bezelDiagW, bezelDiagH),
+        new THREE.Vector2(this.clockRadius, 0),
         Math.PI,
         curveSegments
       )
@@ -264,9 +263,8 @@ class AnalogueClockRenderer {
   }
 
   _createFace() {
-    if (!this.faceDiameter)
-      throw new Error("this.faceDiameter not initialised");
-    const radius = this.faceDiameter / 2;
+    if (!this.faceRadius) throw new Error("this.faceRadius not initialised");
+    const radius = this.faceRadius;
     const faceGroup = new THREE.Group();
     this.scene.add(faceGroup);
 
