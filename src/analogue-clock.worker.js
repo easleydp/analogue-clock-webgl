@@ -7,7 +7,7 @@ class AnalogueClockRenderer {
 
     this.sceneWidth = 1.1;
     this.sceneHeight = 1.1;
-    this.clockDiameter = 1;
+    this.clockDiameter = 1; // Includes bezel (this.faceDiameter will be set once we've created the bezel)
 
     this.isRunning = false;
     this.animationFrameId = null;
@@ -26,7 +26,7 @@ class AnalogueClockRenderer {
       textColor: "#1C1C1C",
       markerColor: "#1C1C1C",
       fontFamily: '"Work Sans", "Trebuchet MS", sans-serif',
-      faceColor: "#F5F5DC",
+      faceColor: "#FFFFFF",
       secondHandColor: "rgb(255, 40, 40)",
       minuteHandColor: "#1C1C1C",
       hourHandColor: "#1C1C1C",
@@ -59,12 +59,14 @@ class AnalogueClockRenderer {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     // renderer size set in onResize
 
-    // ## Lighting ##
     this._createLighting(this.scene);
 
     await this._loadFont();
+    this._createGoldMaterial();
+    this._createPin();
+    this._createBezel();
+    // _createFace() depends on _createBezel() having been called to initialise this.faceDiameter
     this._createFace();
-    this._createPinAndBezel();
     this._createHands();
 
     // Initial resize call to set everything up.
@@ -124,8 +126,147 @@ class AnalogueClockRenderer {
     return sprite;
   }
 
+  _createGoldMaterial() {
+    // TODO: replace with PBR gold material
+    this.goldMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffd700,
+      metalness: 0.8,
+      roughness: 0.2,
+      side: THREE.DoubleSide, // TODO: Once we can see it, switch to single-sided
+    });
+  }
+
+  /**
+   * Helper method for use e.g. when creating curved sections of the profile for
+   * a LatheGeometry. Generates an array of THREE.Vector2 points forming a
+   * circular curve between a start and end point.
+   *
+   * @param {THREE.Vector2} startPoint - The starting point of the curve.
+   * @param {THREE.Vector2} endPoint - The ending point of the curve.
+   * @param {number} sweep - The sweep angle of the curve in radians (<= Math.PI).
+   * @param {number} intermediatePointCount - The number of intermediate points.
+   * @returns {Array<THREE.Vector2>} An array of points, including start and end.
+   */
+  _generateCurvePoints(startPoint, endPoint, sweep, intermediatePointCount) {
+    const points = [];
+    const chordLength = startPoint.distanceTo(endPoint);
+    const nSegments = intermediatePointCount + 1;
+
+    // Edge cases: straight line for zero distance or zero angle
+    if (chordLength < 1e-6 || Math.abs(sweep) < 1e-6) {
+      points.push(startPoint.clone());
+      points.push(endPoint.clone());
+      return points;
+    }
+
+    const radius = chordLength / (2 * Math.sin(sweep / 2));
+    const h_center = Math.sqrt(
+      Math.max(0, radius * radius - (chordLength / 2) * (chordLength / 2))
+    );
+    const midpoint = new THREE.Vector2()
+      .addVectors(startPoint, endPoint)
+      .multiplyScalar(0.5);
+    const delta = new THREE.Vector2().subVectors(endPoint, startPoint);
+    const perpDir = new THREE.Vector2(-delta.y, delta.x).normalize();
+
+    const center = new THREE.Vector2().subVectors(
+      midpoint,
+      perpDir.clone().multiplyScalar(h_center)
+    );
+
+    const vec_C_to_S = new THREE.Vector2().subVectors(startPoint, center);
+    const vec_C_to_E = new THREE.Vector2().subVectors(endPoint, center);
+
+    // Determine the direction of rotation.
+    let rotSign = Math.sign(vec_C_to_S.cross(vec_C_to_E));
+
+    // Fallback for semi-circles (angle=PI) where vectors are collinear.
+    if (rotSign === 0) {
+      rotSign = -Math.sign(perpDir.cross(vec_C_to_S));
+    }
+
+    const angleIncrement = (rotSign * sweep) / nSegments;
+
+    points.push(startPoint.clone());
+    for (let i = 1; i <= intermediatePointCount; i++) {
+      const currentAngle = i * angleIncrement;
+      const pointOnCircle = vec_C_to_S
+        .clone()
+        .rotateAround(new THREE.Vector2(0, 0), currentAngle);
+      points.push(pointOnCircle.add(center));
+    }
+    points.push(endPoint.clone());
+
+    return points;
+  }
+
+  _createPin() {
+    const pinRadius = this.clockDiameter / 100;
+    const pinHoleRadius = pinRadius / 4;
+    const pinH1 = this.clockDiameter / 28;
+    const pinH2 = pinH1 + pinRadius / 3;
+
+    const points = [];
+
+    // Pin start
+    points.push(new THREE.Vector2(pinHoleRadius, pinH1));
+    points.push(new THREE.Vector2(pinHoleRadius, pinH2));
+    // Pin's outer edge is small curved bevel
+    points.push(
+      ...this._generateCurvePoints(
+        new THREE.Vector2(pinRadius, pinH2),
+        new THREE.Vector2(pinRadius + pinH2 - pinH1, pinH1),
+        Math.PI / 2,
+        4
+      )
+    );
+    // Terminate the pin with a point with y=0
+    points.push(new THREE.Vector2(pinRadius + pinH2 - pinH1, 0));
+
+    const geometry = new THREE.LatheGeometry(points, 48);
+    const pin = new THREE.Mesh(geometry, this.goldMaterial);
+
+    // The lathe creates geometry along the Y axis. Rotate so it points toward the camera.
+    pin.rotation.x = Math.PI / 2;
+
+    this.scene.add(pin);
+  }
+
+  _createBezel() {
+    const bezelDiagW = this.clockDiameter / 80;
+    const bezelDiagH = bezelDiagW * 2;
+    const bezelCurveW = bezelDiagW * 2;
+    const curveSegments = 12;
+
+    this.faceDiameter = this.clockDiameter - (bezelDiagW + bezelCurveW) * 2;
+    const faceRadius = this.faceDiameter / 2;
+
+    const points = [];
+
+    // Bezel starts with a diagonal up from y=0 and terminates with a curve down to y=0
+    points.push(new THREE.Vector2(faceRadius, 0));
+    points.push(
+      ...this._generateCurvePoints(
+        new THREE.Vector2(faceRadius + bezelDiagW, bezelDiagH),
+        new THREE.Vector2(this.clockDiameter / 2, 0),
+        Math.PI,
+        curveSegments
+      )
+    );
+
+    const geometry = new THREE.LatheGeometry(points, 96);
+    const bezel = new THREE.Mesh(geometry, this.goldMaterial);
+
+    // The lathe creates geometry along the Y axis. Rotate so it points toward the camera.
+    bezel.rotation.x = Math.PI / 2;
+
+    this.scene.add(bezel);
+  }
+
   _createFace() {
-    const radius = this.clockDiameter / 2;
+    if (!this.faceDiameter)
+      throw new Error("this.faceDiameter not initialised");
+    const radius = this.faceDiameter / 2;
     const faceGroup = new THREE.Group();
     this.scene.add(faceGroup);
 
@@ -210,7 +351,6 @@ class AnalogueClockRenderer {
     }
   }
 
-  _createPinAndBezel() {}
   _createHands() {}
 
   _onResize(width, height, pixelRatio) {
