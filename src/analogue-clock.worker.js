@@ -67,6 +67,7 @@ class AnalogueClockRenderer {
     this._createBezel();
     // _createFace() depends on _createBezel() having been called to initialise this.faceRadius
     this._createFace();
+    // _createHands() depends on _createPin() having been called to initialise this.pinRadius
     this._createHands();
 
     // Initial resize call to set everything up.
@@ -201,10 +202,12 @@ class AnalogueClockRenderer {
   }
 
   _createPin() {
-    const pinRadius = this.clockRadius / 50;
-    const pinHoleRadius = pinRadius / 4;
+    const pinRadius = this.clockRadius / 40;
+    const pinHoleRadius = pinRadius / 6;
     const pinH1 = this.clockRadius / 14;
     const pinH2 = pinH1 + pinRadius / 3;
+
+    this.pinRadius = pinRadius;
 
     const points = [];
 
@@ -220,8 +223,7 @@ class AnalogueClockRenderer {
         4
       )
     );
-    // Terminate the pin with a point with y=0
-    points.push(new THREE.Vector2(pinRadius + pinH2 - pinH1, 0));
+    points.push(new THREE.Vector2(pinRadius + pinH2 - pinH1, pinH1));
 
     const geometry = new THREE.LatheGeometry(points, 48);
     const pin = new THREE.Mesh(geometry, this.goldMaterial);
@@ -349,7 +351,267 @@ class AnalogueClockRenderer {
     }
   }
 
-  _createHands() {}
+  _createHands() {
+    const material = new THREE.MeshStandardMaterial({
+      color: 0x000000,
+      metalness: 0.8,
+      roughness: 0.2,
+      side: THREE.DoubleSide, // TODO: Once we can see it, switch to single-sided
+    });
+
+    const minuteHandLen = 0.37;
+    const minuteHandGeom = this._createHourOrMinuteHandGeom(
+      minuteHandLen,
+      minuteHandLen / 29,
+      minuteHandLen / 15
+    );
+
+    this.minuteHand = new THREE.Mesh(minuteHandGeom, material);
+    this.scene.add(this.minuteHand);
+
+    const hourHandLen = 0.25;
+    const hourHandGeom = this._createHourOrMinuteHandGeom(
+      hourHandLen,
+      hourHandLen / 29,
+      hourHandLen / 9
+    );
+
+    this.hourHand = new THREE.Mesh(hourHandGeom, material);
+    this.hourHand.rotation.z = -Math.PI / 2;
+    this.scene.add(this.hourHand);
+  }
+
+  // ChatGPT version:
+  // /**
+  //  * Helper method for creating a `THREE.ShapeGeometry` for an individual clock hand.
+  //  *
+  //  * @param {number} length - Length of the hand.
+  //  * @param {number} rootWidth - Width of the hand at the root.
+  //  * @param {number} maxWidth - The maximum width of the hand.
+  //  * @returns {THREE.ShapeGeometry} A clock hand starting at [0, 0] and pointing upwards.
+  //  */
+  // _createHourOrMinuteHandGeom(length, rootWidth, maxWidth) {
+  //   const shape = new THREE.Shape();
+
+  //   const lowerLen = 0.27 * length;
+  //   const midLen = 0.33 * length;
+  //   const upperLen = 0.4 * length;
+
+  //   const y0 = 0;
+  //   const y1 = lowerLen;
+  //   const y2 = y1 + midLen;
+  //   const y3 = y2 + upperLen;
+
+  //   const tipRadius = rootWidth * 0.125;
+
+  //   /**
+  //    * Helper to draw one side (left or right) of the hand.
+  //    * @param {1|-1} dir Direction multiplier for x-axis (1 for right, -1 for left).
+  //    * @param {boolean} reverse Whether to reverse the curve order (left side).
+  //    * @returns {THREE.CurvePath} The path of that side.
+  //    */
+  //   function drawSide(dir, reverse = false) {
+  //     const points = [];
+
+  //     // Root to lower concave curve
+  //     points.push([
+  //       (dir * rootWidth) / 2,
+  //       y0,
+  //       (dir * rootWidth) / 2,
+  //       y0 + lowerLen * 0.3,
+  //       (dir * maxWidth) / 2,
+  //       y0 + lowerLen * 0.7,
+  //       (dir * maxWidth) / 2,
+  //       y1,
+  //     ]);
+
+  //     // Convex bulge
+  //     points.push([
+  //       (dir * maxWidth) / 2,
+  //       y1 + midLen * 0.3,
+  //       (dir * maxWidth) / 2,
+  //       y1 + midLen * 0.7,
+  //       ((dir * maxWidth) / 2) * 0.9,
+  //       y2,
+  //     ]);
+
+  //     // Upper concave to tip
+  //     points.push([
+  //       ((dir * maxWidth) / 2) * 0.75,
+  //       y2 + upperLen * 0.3,
+  //       dir * tipRadius,
+  //       y2 + upperLen * 0.7,
+  //       dir * tipRadius,
+  //       y3 - tipRadius,
+  //     ]);
+
+  //     // Apply all curves
+  //     for (let segment of reverse ? points.reverse() : points) {
+  //       shape.bezierCurveTo(...segment);
+  //     }
+  //   }
+
+  //   // Start at bottom-right
+  //   shape.moveTo(rootWidth / 2, y0);
+
+  //   // Right side (normal order)
+  //   drawSide(1, false);
+
+  //   // Semi-circular blunt tip
+  //   shape.absarc(0, y3 - tipRadius, tipRadius, 0, Math.PI, false);
+
+  //   // Left side (mirror, reverse order)
+  //   drawSide(-1, true);
+
+  //   shape.lineTo(rootWidth / 2, y0); // Close the shape
+
+  //   return new THREE.ShapeGeometry(shape);
+  // }
+
+  // Claude version:
+  // /**
+  //  * Helper method for creating a `THREE.ShapeGeometry` for an individual clock hand.
+  //  *
+  //  * @param {number} length - length of the hand.
+  //  * @param {number} rootWidth - width of the hand at the root.
+  //  * @param {number} maxWidth - the maximum width of the hand.
+  //  * @returns {THREE.ShapeGeometry} A clock hand starting at [0, 0] and pointing upwards.
+  //  */
+  // _createHourOrMinuteHandGeom(length, rootWidth, maxWidth) {
+  //   const shape = new THREE.Shape();
+
+  //   // Key measurements
+  //   const halfRootWidth = rootWidth / 2;
+  //   const halfMaxWidth = maxWidth / 2;
+  //   const tipRadius = rootWidth * 0.125; // Semi-circle radius (25% of rootWidth / 2)
+
+  //   // Vertical positions for the three curved sections
+  //   const bulgeY = length * 0.4; // Convex bulge at 40% height
+  //   const lowerCurveStart = 0; // Root (27% section below bulge)
+  //   const upperCurveEnd = length - tipRadius; // End before tip (40% section above bulge)
+
+  //   // Calculate control points for curves (for right side)
+  //   const lowerCurveControl1X =
+  //     halfRootWidth + (halfMaxWidth - halfRootWidth) * 0.3;
+  //   const lowerCurveControl1Y = length * 0.1;
+  //   const lowerCurveControl2X =
+  //     halfMaxWidth - (halfMaxWidth - halfRootWidth) * 0.2;
+  //   const lowerCurveControl2Y = bulgeY - length * 0.08;
+
+  //   const upperCurveControl1X =
+  //     halfMaxWidth + (halfMaxWidth - halfRootWidth) * 0.1;
+  //   const upperCurveControl1Y = bulgeY + length * 0.15;
+  //   const upperCurveControl2X = tipRadius + tipRadius * 0.4;
+  //   const upperCurveControl2Y = upperCurveEnd - length * 0.05;
+
+  //   /**
+  //    * Adds bezier curves for one side of the hand
+  //    * @param {number} sign - 1 for right side, -1 for left side
+  //    */
+  //   function addHandSide(sign) {
+  //     // Lower concave curve (root to bulge) - subtle curve
+  //     shape.bezierCurveTo(
+  //       sign * lowerCurveControl1X,
+  //       lowerCurveControl1Y,
+  //       sign * lowerCurveControl2X,
+  //       lowerCurveControl2Y,
+  //       sign * halfMaxWidth,
+  //       bulgeY
+  //     );
+
+  //     // Upper concave curve (bulge to tip) - more pronounced curve
+  //     shape.bezierCurveTo(
+  //       sign * upperCurveControl1X,
+  //       upperCurveControl1Y,
+  //       sign * upperCurveControl2X,
+  //       upperCurveControl2Y,
+  //       sign * tipRadius,
+  //       upperCurveEnd
+  //     );
+  //   }
+
+  //   // Start at the root center-right
+  //   shape.moveTo(halfRootWidth, lowerCurveStart);
+
+  //   // Right side
+  //   addHandSide(1);
+
+  //   // Tip: Semi-circular end
+  //   shape.absarc(0, upperCurveEnd, tipRadius, 0, Math.PI, false);
+
+  //   // Left side (mirrored)
+  //   addHandSide(-1);
+
+  //   // Close the shape back to the starting point
+  //   shape.lineTo(halfRootWidth, lowerCurveStart);
+
+  //   return new THREE.ShapeGeometry(shape);
+  // }
+
+  // Gemini version:
+  /**
+   * Helper method for creating a `THREE.ShapeGeometry` for an hour or minute hand.
+   *
+   * The generated hand shape is symmetrical about the y-axis and points upwards,
+   * with its root at the origin [0, 0]. It features a curvaceous design with a
+   * convex bulge and a blunt, semi-circular tip. The shape's proportions and
+   * curviness can be easily adjusted via constants within the function.
+   *
+   * @param {number} length - The total length of the hand from the center root to the tip.
+   * @param {number} rootWidth - The width of the hand at its base (root).
+   * @param {number} maxWidth - The maximum width of the hand at its widest point (the bulge).
+   * @returns {THREE.ShapeGeometry} A clock hand geometry.
+   */
+  _createHourOrMinuteHandGeom(length, rootWidth, maxWidth) {
+    // --- Tweakable Parameters for Hand Shape ---
+    const BULGE_Y_FRAC = 0.4;
+    const TIP_DIAMETER_FRAC = 0.2;
+    const CP1_Y_FRAC = 0.1;
+    const CP1_X_FACTOR = 0.7;
+    const CP2_Y_FRAC = 0.3;
+    const CP2_X_FACTOR = 1.1;
+    const CP4_Y_INTERPOLATE = 0.75;
+
+    // --- Define the Right-Side Profile ---
+    // All points for one half of the hand are calculated here.
+    const shape = new THREE.Shape();
+
+    const r_half = rootWidth / 2;
+    const m_half = maxWidth / 2;
+    const tipRadius = (rootWidth * TIP_DIAMETER_FRAC) / 2;
+
+    const bulgeY = length * BULGE_Y_FRAC;
+    const tipArcY = length - tipRadius;
+
+    const pRootR = { x: r_half, y: 0 };
+    const pBulgeR = { x: m_half, y: bulgeY };
+    const pTipSideR = { x: tipRadius, y: tipArcY };
+
+    const cp1 = { x: pRootR.x * CP1_X_FACTOR, y: length * CP1_Y_FRAC };
+    const cp2 = { x: pBulgeR.x * CP2_X_FACTOR, y: length * CP2_Y_FRAC };
+    const cp3 = { x: 2 * pBulgeR.x - cp2.x, y: 2 * pBulgeR.y - cp2.y };
+    const cp4 = {
+      x: pTipSideR.x,
+      y: pBulgeR.y + (pTipSideR.y - pBulgeR.y) * CP4_Y_INTERPOLATE,
+    };
+
+    // --- Draw Right Side Path ---
+    shape.moveTo(pRootR.x, pRootR.y);
+    shape.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, pBulgeR.x, pBulgeR.y);
+    shape.bezierCurveTo(cp3.x, cp3.y, cp4.x, cp4.y, pTipSideR.x, pTipSideR.y);
+
+    // --- Draw Tip Arc ---
+    shape.absarc(0, tipArcY, tipRadius, 0, Math.PI, false);
+
+    // --- Draw Left Side Path by Reusing and Mirroring Right-Side Points ---
+    // This approach guarantees symmetry. The path is drawn from the tip down to the root.
+    shape.bezierCurveTo(-cp4.x, cp4.y, -cp3.x, cp3.y, -pBulgeR.x, pBulgeR.y);
+    shape.bezierCurveTo(-cp2.x, cp2.y, -cp1.x, cp1.y, -pRootR.x, pRootR.y);
+
+    shape.closePath();
+
+    return new THREE.ShapeGeometry(shape);
+  }
 
   _onResize(width, height, pixelRatio) {
     this.pixelRatio = pixelRatio;
