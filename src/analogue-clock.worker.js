@@ -91,7 +91,7 @@ class AnalogueClockRenderer {
   }
 
   _createLighting(scene) {
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
     scene.add(ambientLight);
 
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -133,7 +133,7 @@ class AnalogueClockRenderer {
       color: 0xffd700,
       metalness: 0.8,
       roughness: 0.2,
-      side: THREE.DoubleSide, // TODO: Once we can see it, switch to single-sided
+      side: THREE.BackSide,
     });
   }
 
@@ -352,33 +352,37 @@ class AnalogueClockRenderer {
   }
 
   _createHands() {
-    const material = new THREE.MeshStandardMaterial({
-      color: 0x000000,
+    const handsGroup = new THREE.Group();
+    handsGroup.position.setZ(0.01); // TODO: define in terms of pin start height
+    this.scene.add(handsGroup);
+
+    const minuteAndHourMaterial = new THREE.MeshStandardMaterial({
+      color: 0x777777,
       metalness: 0.8,
       roughness: 0.2,
-      side: THREE.DoubleSide, // TODO: Once we can see it, switch to single-sided
     });
 
-    const minuteHandLen = 0.37;
+    const minuteHandLen = this.faceRadius * 0.8;
     const minuteHandGeom = this._createHourOrMinuteHandGeom(
       minuteHandLen,
       minuteHandLen / 29,
       minuteHandLen / 15
     );
 
-    this.minuteHand = new THREE.Mesh(minuteHandGeom, material);
-    this.scene.add(this.minuteHand);
+    this.minuteHand = new THREE.Mesh(minuteHandGeom, minuteAndHourMaterial);
+    handsGroup.add(this.minuteHand);
 
-    const hourHandLen = 0.25;
+    const hourHandLen = this.faceRadius * 0.54;
     const hourHandGeom = this._createHourOrMinuteHandGeom(
       hourHandLen,
       hourHandLen / 29,
       hourHandLen / 9
     );
 
-    this.hourHand = new THREE.Mesh(hourHandGeom, material);
+    this.hourHand = new THREE.Mesh(hourHandGeom, minuteAndHourMaterial);
     this.hourHand.rotation.z = -Math.PI / 2;
-    this.scene.add(this.hourHand);
+
+    handsGroup.add(this.hourHand);
   }
 
   // ChatGPT version:
