@@ -55,6 +55,8 @@ class AnalogueClockRenderer {
       antialias: true,
       alpha: true,
     });
+    // TODO: When shadows are working, try deleting this line:
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     // renderer size set in onResize
@@ -91,20 +93,27 @@ class AnalogueClockRenderer {
   }
 
   _createLighting(scene) {
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1);
-    scene.add(ambientLight);
+    // TODO: When shadows are working, try restoring this simpler code:
+    // const ambientLight = new THREE.AmbientLight(0xffffff, 1);
+    // scene.add(ambientLight);
+    // Use a HemisphereLight for more natural ambient lighting.
+    const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x8d8d8d, 3);
+    scene.add(hemisphereLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(5, 5, 5);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 3);
+    directionalLight.position.set(5, 10, 7.5); // Positioned to cast a clear shadow
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 2048;
     directionalLight.shadow.mapSize.height = 2048;
-    scene.add(directionalLight);
+    directionalLight.shadow.camera.left = -this.clockRadius * 1.2;
+    directionalLight.shadow.camera.right = this.clockRadius * 1.2;
+    directionalLight.shadow.camera.top = this.clockRadius * 1.2;
+    directionalLight.shadow.camera.bottom = -this.clockRadius * 1.2;
+    directionalLight.shadow.camera.near = 0.1;
+    directionalLight.shadow.camera.far = 20;
+    directionalLight.shadow.bias = -0.0005;
 
-    // Add a rim light for better gold appearance
-    const rimLight = new THREE.DirectionalLight(0xffffff, 0.3);
-    rimLight.position.set(-5, 2, -5);
-    scene.add(rimLight);
+    scene.add(directionalLight);
   }
 
   _createTextSprite(
@@ -272,8 +281,14 @@ class AnalogueClockRenderer {
 
     // Create the clock face
     const faceGeometry = new THREE.CircleGeometry(radius, 64);
-    const faceMaterial = new THREE.MeshBasicMaterial({
-      color: this.options.faceColor,
+    // TODO: When shadows are working, try restoring this simpler code:
+    // const faceMaterial = new THREE.MeshBasicMaterial({
+    //   color: this.options.faceColor,
+    // });
+    const faceMaterial = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(this.options.faceColor),
+      metalness: 0.0,
+      roughness: 0.9, // A slightly soft, matte look
     });
     const faceMesh = new THREE.Mesh(faceGeometry, faceMaterial);
     faceMesh.receiveShadow = true;
@@ -353,7 +368,8 @@ class AnalogueClockRenderer {
 
   _createHands() {
     const handsGroup = new THREE.Group();
-    handsGroup.position.setZ(0.04); // TODO: define in terms of pin start height
+    handsGroup.position.setZ(0.1); // TODO: define in terms of pin start height
+    handsGroup.castShadow = true;
     this.scene.add(handsGroup);
 
     const minuteAndHourMaterial = new THREE.MeshStandardMaterial({
@@ -370,6 +386,7 @@ class AnalogueClockRenderer {
     );
 
     this.minuteHand = new THREE.Mesh(minuteHandGeom, minuteAndHourMaterial);
+    this.minuteHand.castShadow = true;
     handsGroup.add(this.minuteHand);
 
     const hourHandLen = this.faceRadius * 0.5;
@@ -380,6 +397,7 @@ class AnalogueClockRenderer {
     );
 
     this.hourHand = new THREE.Mesh(hourHandGeom, minuteAndHourMaterial);
+    this.hourHand.castShadow = true;
     this.hourHand.rotation.z = -Math.PI / 2;
     handsGroup.add(this.hourHand);
 
@@ -397,6 +415,7 @@ class AnalogueClockRenderer {
       secondHandWidth
     );
     this.secondHand = new THREE.Mesh(secondHandGeom, secondHandMaterial);
+    this.secondHand.castShadow = true;
     this.secondHand.rotation.z = -0.1;
     handsGroup.add(this.secondHand);
   }
