@@ -170,43 +170,45 @@ class AnalogueClockRenderer {
    */
   _generateCurvePoints(startPoint, endPoint, sweep, intermediatePointCount) {
     const points = [];
-    const chordLength = startPoint.distanceTo(endPoint);
+    const chord = new THREE.Vector2().subVectors(endPoint, startPoint);
+    const chordLength = chord.length();
     const nSegments = intermediatePointCount + 1;
 
-    // Edge cases: straight line for zero distance or zero angle
+    // Handle straight line cases
     if (chordLength < 1e-6 || Math.abs(sweep) < 1e-6) {
       points.push(startPoint.clone());
       points.push(endPoint.clone());
       return points;
     }
 
-    const radius = chordLength / (2 * Math.sin(sweep / 2));
-    const h_center = Math.sqrt(
-      Math.max(0, radius * radius - (chordLength / 2) * (chordLength / 2))
-    );
+    const absSweep = Math.abs(sweep);
+    const radius = chordLength / (2 * Math.sin(absSweep / 2));
+
+    // h is the distance from the chord's midpoint to the circle's center
+    const h = Math.sqrt(Math.max(0, radius * radius - (chordLength / 2) ** 2));
+
     const midpoint = new THREE.Vector2()
       .addVectors(startPoint, endPoint)
       .multiplyScalar(0.5);
-    const delta = new THREE.Vector2().subVectors(endPoint, startPoint);
-    const perpDir = new THREE.Vector2(-delta.y, delta.x).normalize();
 
-    const center = new THREE.Vector2().subVectors(
-      midpoint,
-      perpDir.clone().multiplyScalar(h_center)
-    );
+    // A normalized vector perpendicular to the chord.
+    // (x, y) -> (-y, x) is a 90-degree counter-clockwise rotation.
+    // This vector points to the "left" of the chord from start to end.
+    const perp = new THREE.Vector2(-chord.y, chord.x).normalize();
 
+    // The center of the circle is offset from the chord's midpoint along the perpendicular.
+    // The direction of the offset depends on the sweep direction.
+    // A positive (CCW) sweep means the center is on the "left" side.
+    // A negative (CW) sweep means the center is on the "right" side.
+    const sweepSign = Math.sign(sweep);
+    const center = midpoint
+      .clone()
+      .add(perp.clone().multiplyScalar(h * sweepSign));
+
+    // Vector from the new center to the start point.
     const vec_C_to_S = new THREE.Vector2().subVectors(startPoint, center);
-    const vec_C_to_E = new THREE.Vector2().subVectors(endPoint, center);
 
-    // Determine the direction of rotation.
-    let rotSign = Math.sign(vec_C_to_S.cross(vec_C_to_E));
-
-    // Fallback for semi-circles (angle=PI) where vectors are collinear.
-    if (rotSign === 0) {
-      rotSign = -Math.sign(perpDir.cross(vec_C_to_S));
-    }
-
-    const angleIncrement = (rotSign * sweep) / nSegments;
+    const angleIncrement = sweep / nSegments;
 
     points.push(startPoint.clone());
     for (let i = 1; i <= intermediatePointCount; i++) {
@@ -234,18 +236,18 @@ class AnalogueClockRenderer {
       ...this._generateCurvePoints(
         new THREE.Vector2(pinRadius / 3, pinH),
         new THREE.Vector2(pinRadius, 0),
-        Math.PI / 2,
+        -Math.PI / 2,
         4
       )
     );
-    console.log(
-      "pin points",
-      JSON.stringify(
-        points.map((v) => {
-          return { x: v.x, y: v.y };
-        })
-      )
-    );
+    // console.log(
+    //   "pin points",
+    //   JSON.stringify(
+    //     points.map((v) => {
+    //       return { x: v.x, y: v.y };
+    //     })
+    //   )
+    // );
 
     const geometry = new THREE.LatheGeometry(points, 48);
     const pin = new THREE.Mesh(geometry, this.goldMaterial);
@@ -273,18 +275,18 @@ class AnalogueClockRenderer {
       ...this._generateCurvePoints(
         new THREE.Vector2(this.faceRadius + bezelDiagW, bezelDiagH),
         new THREE.Vector2(this.clockRadius, 0),
-        -Math.PI,
+        -Math.PI * 0.67,
         curveSegments
       )
     );
-    console.log(
-      "bezel points",
-      JSON.stringify(
-        points.map((v) => {
-          return { x: v.x, y: v.y };
-        })
-      )
-    );
+    // console.log(
+    //   "bezel points",
+    //   JSON.stringify(
+    //     points.map((v) => {
+    //       return { x: v.x, y: v.y };
+    //     })
+    //   )
+    // );
 
     const geometry = new THREE.LatheGeometry(points, 96);
     const bezel = new THREE.Mesh(geometry, this.goldMaterial);
