@@ -78,12 +78,10 @@ class AnalogueClockRenderer {
 
     await this._loadFont();
     this._createGoldMaterial();
-    this._createPin();
     this._createBezel();
-    // _createFace() depends on _createBezel() having been called to initialise this.faceRadius
-    this._createFace();
-    // _createHands() depends on _createPin() having been called to initialise this.pinRadius
-    this._createHands();
+    this._createFace(); // depends on _createBezel() having been called to initialise this.faceRadius
+    this._createPin(); // depends on _createBezel() having been called to initialise this.movingPartsMaxHeight
+    this._createHands(); // depends on _createPin() having been called to initialise this.pinRadius
 
     // Initial resize call to set everything up.
     this._onResize(initialWidth, initialHeight, this.pixelRatio);
@@ -224,28 +222,30 @@ class AnalogueClockRenderer {
   }
 
   _createPin() {
-    const pinRadius = this.clockRadius / 40;
+    const pinRadius = (this.pinRadius = this.clockRadius / 30);
+    const pinH = this.movingPartsMaxHeight * 0.8;
     const pinHoleRadius = pinRadius / 6;
-    const pinH1 = this.clockRadius / 14;
-    const pinH2 = pinH1 + pinRadius / 3;
-
-    this.pinRadius = pinRadius;
-
     const points = [];
 
-    // Pin start
-    points.push(new THREE.Vector2(pinHoleRadius, pinH1));
-    points.push(new THREE.Vector2(pinHoleRadius, pinH2));
+    // Pin starts near the middle of the clock, just after the pin hole.
+    points.push(new THREE.Vector2(pinHoleRadius, pinH));
     // Pin's outer edge is small curved bevel
     points.push(
       ...this._generateCurvePoints(
-        new THREE.Vector2(pinRadius, pinH2),
-        new THREE.Vector2(pinRadius + pinH2 - pinH1, pinH1),
+        new THREE.Vector2(pinRadius / 3, pinH),
+        new THREE.Vector2(pinRadius, 0),
         Math.PI / 2,
         4
       )
     );
-    points.push(new THREE.Vector2(pinRadius + pinH2 - pinH1, pinH1));
+    console.log(
+      "pin points",
+      JSON.stringify(
+        points.map((v) => {
+          return { x: v.x, y: v.y };
+        })
+      )
+    );
 
     const geometry = new THREE.LatheGeometry(points, 48);
     const pin = new THREE.Mesh(geometry, this.goldMaterial);
@@ -263,6 +263,7 @@ class AnalogueClockRenderer {
     const curveSegments = 12;
 
     this.faceRadius = this.clockRadius - (bezelDiagW + bezelCurveW);
+    this.movingPartsMaxHeight = bezelDiagH;
 
     const points = [];
 
@@ -272,8 +273,16 @@ class AnalogueClockRenderer {
       ...this._generateCurvePoints(
         new THREE.Vector2(this.faceRadius + bezelDiagW, bezelDiagH),
         new THREE.Vector2(this.clockRadius, 0),
-        Math.PI,
+        -Math.PI,
         curveSegments
+      )
+    );
+    console.log(
+      "bezel points",
+      JSON.stringify(
+        points.map((v) => {
+          return { x: v.x, y: v.y };
+        })
       )
     );
 
@@ -380,27 +389,11 @@ class AnalogueClockRenderer {
   }
 
   _createHands() {
-    const handsGroup = new THREE.Group();
-    handsGroup.position.setZ(0.1); // TODO: define in terms of pin start height
-    handsGroup.castShadow = true;
-    this.scene.add(handsGroup);
-
     const minuteAndHourMaterial = new THREE.MeshStandardMaterial({
       color: this.options.minuteHandColor,
       metalness: 0.8,
       roughness: 0.2,
     });
-
-    const minuteHandLen = this.faceRadius * 0.7;
-    const minuteHandGeom = this._createHourOrMinuteHandGeom(
-      minuteHandLen,
-      minuteHandLen / 29,
-      minuteHandLen / 15
-    );
-
-    this.minuteHand = new THREE.Mesh(minuteHandGeom, minuteAndHourMaterial);
-    this.minuteHand.castShadow = true;
-    handsGroup.add(this.minuteHand);
 
     const hourHandLen = this.faceRadius * 0.5;
     const hourHandGeom = this._createHourOrMinuteHandGeom(
@@ -411,8 +404,21 @@ class AnalogueClockRenderer {
 
     this.hourHand = new THREE.Mesh(hourHandGeom, minuteAndHourMaterial);
     this.hourHand.castShadow = true;
-    this.hourHand.rotation.z = -Math.PI / 2;
-    handsGroup.add(this.hourHand);
+    // The lowest moving part but still high enough make its shadow discernable
+    this.hourHand.position.setZ(this.movingPartsMaxHeight * 0.4);
+    this.scene.add(this.hourHand);
+
+    const minuteHandLen = this.faceRadius * 0.7;
+    const minuteHandGeom = this._createHourOrMinuteHandGeom(
+      minuteHandLen,
+      minuteHandLen / 29,
+      minuteHandLen / 15
+    );
+
+    this.minuteHand = new THREE.Mesh(minuteHandGeom, minuteAndHourMaterial);
+    this.minuteHand.castShadow = true;
+    this.minuteHand.position.setZ(this.movingPartsMaxHeight * 0.55);
+    this.scene.add(this.minuteHand);
 
     const secondHandMaterial = new THREE.MeshStandardMaterial({
       color: this.options.secondHandColor,
@@ -429,8 +435,8 @@ class AnalogueClockRenderer {
     );
     this.secondHand = new THREE.Mesh(secondHandGeom, secondHandMaterial);
     this.secondHand.castShadow = true;
-    this.secondHand.rotation.z = -0.1;
-    handsGroup.add(this.secondHand);
+    this.secondHand.position.setZ(this.movingPartsMaxHeight * 0.9);
+    this.scene.add(this.secondHand);
   }
 
   /**
