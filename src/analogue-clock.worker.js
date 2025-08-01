@@ -23,7 +23,7 @@ class AnalogueClockRenderer {
     this.lastSystemSecond = -1;
     this.secondHandAnimationPhase = "SETTLED"; // 'SETTLED', 'CREEPING', 'OVERSHOOT', 'RECOIL'
     this.targetSecondBaseAngle = 0; // Normal angle for the current (last ticked) second
-    this.currentSecondHandVisualAngle = 0; // Actual rendered angle of the second hand
+    this.secondHandVisualAngle = 0; // Actual rendered angle of the second hand
   }
 
   async init(canvas, options, initialWidth, initialHeight, pixelRatio) {
@@ -602,15 +602,8 @@ class AnalogueClockRenderer {
       this.lastTimestamp = timestamp;
 
       const now = new Date();
-      const currentHours = now.getHours();
-      const currentMinutes = now.getMinutes();
       const currentSeconds = now.getSeconds();
       const currentMilliseconds = now.getMilliseconds();
-
-      // Calculate smooth hand angles
-      const hourAngle =
-        (((currentHours % 12) + currentMinutes / 60) / 12) * 360;
-      const minuteAngle = ((currentMinutes + currentSeconds / 60) / 60) * 360;
 
       // --- SECOND HAND PHYSICS LOGIC ---
       const newSecondDetected = currentSeconds !== this.lastSystemSecond;
@@ -619,20 +612,20 @@ class AnalogueClockRenderer {
         this.lastSystemSecond = currentSeconds;
         this.targetSecondBaseAngle = (currentSeconds / 60) * 360; // Normal angle for the new second
         this.secondHandAnimationPhase = "OVERSHOOT";
-        this.currentSecondHandVisualAngle =
+        this.secondHandVisualAngle =
           this.targetSecondBaseAngle +
           this.options.secondHandPhysics.overshootDegrees;
       } else {
         switch (this.secondHandAnimationPhase) {
           case "OVERSHOOT":
             this.secondHandAnimationPhase = "RECOIL";
-            this.currentSecondHandVisualAngle =
+            this.secondHandVisualAngle =
               this.targetSecondBaseAngle +
               this.options.secondHandPhysics.recoilDegrees;
             break;
           case "RECOIL":
             this.secondHandAnimationPhase = "SETTLED";
-            this.currentSecondHandVisualAngle = this.targetSecondBaseAngle;
+            this.secondHandVisualAngle = this.targetSecondBaseAngle;
             break;
           case "SETTLED":
             const millisecondsUntilNextTick = 1000 - currentMilliseconds;
@@ -644,7 +637,7 @@ class AnalogueClockRenderer {
               this.secondHandAnimationPhase = "CREEPING";
               // Fall through to CREEPING case to calculate position immediately
             } else {
-              this.currentSecondHandVisualAngle = this.targetSecondBaseAngle; // Stay settled
+              this.secondHandVisualAngle = this.targetSecondBaseAngle; // Stay settled
               break; // Important: Break if not transitioning to CREEPING
             }
           // falls through to CREEPING if phase just changed or was already CREEPING
@@ -658,7 +651,7 @@ class AnalogueClockRenderer {
             ) {
               // Creep window passed or time jumped, revert to settled or await next tick
               this.secondHandAnimationPhase = "SETTLED";
-              this.currentSecondHandVisualAngle = this.targetSecondBaseAngle;
+              this.secondHandVisualAngle = this.targetSecondBaseAngle;
             } else {
               const timeIntoCreepMs =
                 this.options.secondHandPhysics.creepDurationMs -
@@ -671,15 +664,15 @@ class AnalogueClockRenderer {
               const additionalCreepAngle =
                 creepProgress *
                 this.options.secondHandPhysics.creepAngleDegrees;
-              this.currentSecondHandVisualAngle =
+              this.secondHandVisualAngle =
                 this.targetSecondBaseAngle + additionalCreepAngle;
             }
             break;
           default: // Shouldn't happen
-            console.warn("Illegal condition", this.secondHandAnimationPhase);
+            console.error("Illegal condition", this.secondHandAnimationPhase);
             this.secondHandAnimationPhase = "SETTLED";
             this.targetSecondBaseAngle = (currentSeconds / 60) * 360;
-            this.currentSecondHandVisualAngle = this.targetSecondBaseAngle;
+            this.secondHandVisualAngle = this.targetSecondBaseAngle;
             break;
         }
       }
@@ -687,11 +680,14 @@ class AnalogueClockRenderer {
         return -MathUtils.degToRad(d);
       };
 
-      this.secondHand.rotation.z = clockDegToRad(
-        this.currentSecondHandVisualAngle
-      );
+      this.secondHand.rotation.z = clockDegToRad(this.secondHandVisualAngle);
       if (newSecondDetected) {
+        const currentMinutes = now.getMinutes() + currentSeconds / 60;
+        const minuteAngle = (currentMinutes / 60) * 360;
         this.minuteHand.rotation.z = clockDegToRad(minuteAngle);
+
+        const currentHours = (now.getHours() % 12) + currentMinutes / 60;
+        const hourAngle = (currentHours / 12) * 360;
         this.hourHand.rotation.z = clockDegToRad(hourAngle);
       }
 
