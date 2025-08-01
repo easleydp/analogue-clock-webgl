@@ -10,13 +10,20 @@ class AnalogueClockRenderer {
     this.clockRadius = 0.5; // Includes bezel (this.faceRadius will be set once we've created the bezel)
 
     this.isRunning = false;
+    this.scene = null;
+    this.camera = null;
+    this.renderer = null;
+
     this.animationFrameId = null;
     this.lastTimestamp = -1; // Last timestamp for animation loop
     this.maxRateHz = 50;
     this.lastRateHz = this.maxRateHz;
-    this.scene = null;
-    this.camera = null;
-    this.renderer = null;
+
+    // State variables for second hand physics
+    this.lastSystemSecond = -1;
+    this.secondHandAnimationPhase = "SETTLED"; // 'SETTLED', 'CREEPING', 'OVERSHOOT', 'RECOIL'
+    this.targetSecondBaseAngle = 0; // Normal angle for the current (last ticked) second
+    this.currentSecondHandVisualAngle = 0; // Actual rendered angle of the second hand
   }
 
   async init(canvas, options, initialWidth, initialHeight, pixelRatio) {
@@ -32,6 +39,12 @@ class AnalogueClockRenderer {
       hourHandColor: "#1C1C1C",
       romanNumerals: false,
       brand: null, // e.g. "Acme". Displayed as static text on the clock face, half way between the centre pin and the '12'.
+      secondHandPhysics: {
+        creepDurationMs: 150,
+        creepAngleDegrees: 2,
+        overshootDegrees: 2,
+        recoilDegrees: -1.5,
+      },
       ...options,
     };
 
@@ -588,8 +601,99 @@ class AnalogueClockRenderer {
       this.lastRateHz = actualRateHz;
       this.lastTimestamp = timestamp;
 
-      // ## Animation ##
-      // TODO: animate the clock hands
+      const now = new Date();
+      const currentHours = now.getHours();
+      const currentMinutes = now.getMinutes();
+      const currentSeconds = now.getSeconds();
+      const currentMilliseconds = now.getMilliseconds();
+
+      // Calculate smooth hand angles
+      const hourAngle =
+        (((currentHours % 12) + currentMinutes / 60) / 12) * 360;
+      const minuteAngle = ((currentMinutes + currentSeconds / 60) / 60) * 360;
+
+      // --- SECOND HAND PHYSICS LOGIC ---
+      const newSecondDetected = currentSeconds !== this.lastSystemSecond;
+
+      if (newSecondDetected) {
+        this.lastSystemSecond = currentSeconds;
+        this.targetSecondBaseAngle = (currentSeconds / 60) * 360; // Normal angle for the new second
+        this.secondHandAnimationPhase = "OVERSHOOT";
+        this.currentSecondHandVisualAngle =
+          this.targetSecondBaseAngle +
+          this.options.secondHandPhysics.overshootDegrees;
+      } else {
+        switch (this.secondHandAnimationPhase) {
+          case "OVERSHOOT":
+            this.secondHandAnimationPhase = "RECOIL";
+            this.currentSecondHandVisualAngle =
+              this.targetSecondBaseAngle +
+              this.options.secondHandPhysics.recoilDegrees;
+            break;
+          case "RECOIL":
+            this.secondHandAnimationPhase = "SETTLED";
+            this.currentSecondHandVisualAngle = this.targetSecondBaseAngle;
+            break;
+          case "SETTLED":
+            const millisecondsUntilNextTick = 1000 - currentMilliseconds;
+            if (
+              millisecondsUntilNextTick <=
+                this.options.secondHandPhysics.creepDurationMs &&
+              millisecondsUntilNextTick > 0
+            ) {
+              this.secondHandAnimationPhase = "CREEPING";
+              // Fall through to CREEPING case to calculate position immediately
+            } else {
+              this.currentSecondHandVisualAngle = this.targetSecondBaseAngle; // Stay settled
+              break; // Important: Break if not transitioning to CREEPING
+            }
+          // falls through to CREEPING if phase just changed or was already CREEPING
+          case "CREEPING":
+            // Ensure we are still in the creep window
+            let msUntilNextTick = 1000 - currentMilliseconds;
+            if (
+              msUntilNextTick >
+                this.options.secondHandPhysics.creepDurationMs ||
+              msUntilNextTick < 0
+            ) {
+              // Creep window passed or time jumped, revert to settled or await next tick
+              this.secondHandAnimationPhase = "SETTLED";
+              this.currentSecondHandVisualAngle = this.targetSecondBaseAngle;
+            } else {
+              const timeIntoCreepMs =
+                this.options.secondHandPhysics.creepDurationMs -
+                msUntilNextTick;
+              let creepProgress =
+                timeIntoCreepMs /
+                this.options.secondHandPhysics.creepDurationMs;
+              creepProgress = Math.max(0, Math.min(1, creepProgress)); // Clamp progress
+
+              const additionalCreepAngle =
+                creepProgress *
+                this.options.secondHandPhysics.creepAngleDegrees;
+              this.currentSecondHandVisualAngle =
+                this.targetSecondBaseAngle + additionalCreepAngle;
+            }
+            break;
+          default: // Shouldn't happen
+            console.warn("Illegal condition", this.secondHandAnimationPhase);
+            this.secondHandAnimationPhase = "SETTLED";
+            this.targetSecondBaseAngle = (currentSeconds / 60) * 360;
+            this.currentSecondHandVisualAngle = this.targetSecondBaseAngle;
+            break;
+        }
+      }
+      const clockDegToRad = (d) => {
+        return -MathUtils.degToRad(d);
+      };
+
+      this.secondHand.rotation.z = clockDegToRad(
+        this.currentSecondHandVisualAngle
+      );
+      if (newSecondDetected) {
+        this.minuteHand.rotation.z = clockDegToRad(minuteAngle);
+        this.hourHand.rotation.z = clockDegToRad(hourAngle);
+      }
 
       if (this.renderer) this.renderer.render(this.scene, this.camera);
     }
