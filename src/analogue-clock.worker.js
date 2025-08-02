@@ -1,6 +1,11 @@
 import * as THREE from "three";
 import { MathUtils } from "three";
 
+const clockHandExtrudeSettings = {
+  steps: 1,
+  depth: 0.0001,
+  bevelEnabled: false,
+};
 class AnalogueClockRenderer {
   constructor() {
     this.options = {};
@@ -68,13 +73,9 @@ class AnalogueClockRenderer {
       antialias: true,
       alpha: true,
     });
-    // TODO: When shadows are working, try deleting this line:
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap; //PCFSoftShadowMap;
     // renderer size set in onResize
-
-    this._createLighting(this.scene);
 
     await this._loadFont();
     this._createGoldMaterial();
@@ -82,6 +83,8 @@ class AnalogueClockRenderer {
     this._createFace(); // depends on _createBezel() having been called to initialise this.faceRadius
     this._createPin(); // depends on _createBezel() having been called to initialise this.movingPartsMaxHeight
     this._createHands(); // depends on _createPin() having been called to initialise this.pinRadius
+
+    this._createLighting(this.scene);
 
     // Initial resize call to set everything up.
     this._onResize(initialWidth, initialHeight, this.pixelRatio);
@@ -104,15 +107,11 @@ class AnalogueClockRenderer {
   }
 
   _createLighting(scene) {
-    // TODO: When shadows are working, try restoring this simpler code:
-    // const ambientLight = new THREE.AmbientLight(0xffffff, 1);
-    // scene.add(ambientLight);
-    // Use a HemisphereLight for more natural ambient lighting.
-    const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x8d8d8d, 3);
-    scene.add(hemisphereLight);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 2);
+    scene.add(ambientLight);
 
     const directionalLight = new THREE.DirectionalLight(0xffffff, 3);
-    directionalLight.position.set(5, 10, 7.5); // Positioned to cast a clear shadow
+    directionalLight.position.set(5, 4, 10); // Positioned to cast a clear shadow
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 2048;
     directionalLight.shadow.mapSize.height = 2048;
@@ -123,6 +122,7 @@ class AnalogueClockRenderer {
     directionalLight.shadow.camera.near = 0.1;
     directionalLight.shadow.camera.far = 20;
     directionalLight.shadow.bias = -0.0005;
+    directionalLight.shadow.radius = 4.5;
 
     scene.add(directionalLight);
   }
@@ -305,25 +305,22 @@ class AnalogueClockRenderer {
 
     // Create the clock face
     const faceGeometry = new THREE.CircleGeometry(radius, 64);
-    // TODO: When shadows are working, try restoring this simpler code:
-    // const faceMaterial = new THREE.MeshBasicMaterial({
-    //   color: this.options.faceColor,
-    // });
+    // Note: MeshBasicMaterial, being an 'unlit material', doesn't support receiving a shadow
     const faceMaterial = new THREE.MeshStandardMaterial({
       color: new THREE.Color(this.options.faceColor),
       metalness: 0.0,
       roughness: 0.9, // A slightly soft, matte look
+      side: THREE.DoubleSide,
     });
-    const faceMesh = new THREE.Mesh(faceGeometry, faceMaterial);
-    faceMesh.receiveShadow = true;
-    faceGroup.add(faceMesh);
+    const face = new THREE.Mesh(faceGeometry, faceMaterial);
+    face.receiveShadow = true;
+    faceGroup.add(face);
 
     // Create markers
     const markerMaterial = new THREE.MeshBasicMaterial({
       color: this.options.markerColor,
     });
     const markersGroup = new THREE.Group();
-    markersGroup.position.z = 0.01; // Slightly in front of the face
     faceGroup.add(markersGroup);
 
     const markersRadius = radius * 0.88;
@@ -350,7 +347,6 @@ class AnalogueClockRenderer {
 
     // Create numerals
     const numeralsGroup = new THREE.Group();
-    numeralsGroup.position.z = 0.01;
     faceGroup.add(numeralsGroup);
     const numeralsRadius = markersRadius * 0.82;
 
@@ -448,7 +444,7 @@ class AnalogueClockRenderer {
    * element at the pivot point. It is symmetrical about the y-axis and points
    * upwards, with its pivot at the origin [0, 0].
    *
-   * @returns {THREE.ShapeGeometry} A clock hand geometry.
+   * @returns {THREE.ExtrudeGeometry} A clock hand geometry (extruded so it can cast a shadow).
    */
   _createSecondHandGeom(length, tailLength, width) {
     const shape = new THREE.Shape();
@@ -493,7 +489,7 @@ class AnalogueClockRenderer {
 
     shape.closePath();
 
-    return new THREE.ShapeGeometry(shape);
+    return new THREE.ExtrudeGeometry(shape, clockHandExtrudeSettings);
   }
 
   /**
@@ -507,7 +503,7 @@ class AnalogueClockRenderer {
    * @param {number} length - The total length of the hand from the center root to the tip.
    * @param {number} rootWidth - The width of the hand at its base (root).
    * @param {number} maxWidth - The maximum width of the hand at its widest point (the bulge).
-   * @returns {THREE.ShapeGeometry} A clock hand geometry.
+   * @returns {THREE.ExtrudeGeometry} A clock hand geometry (extruded so it can cast a shadow).
    */
   _createHourOrMinuteHandGeom(length, rootWidth, maxWidth) {
     // --- Tweakable Parameters for Hand Shape ---
@@ -557,7 +553,7 @@ class AnalogueClockRenderer {
 
     shape.closePath();
 
-    return new THREE.ShapeGeometry(shape);
+    return new THREE.ExtrudeGeometry(shape, clockHandExtrudeSettings);
   }
 
   _onResize(width, height, pixelRatio) {
