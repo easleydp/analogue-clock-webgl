@@ -74,7 +74,7 @@ class AnalogueClockRenderer {
       alpha: true,
     });
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap; //PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap; // Eschew PCFSoftShadowMap; control blur using `radius`
     // renderer size set in onResize
 
     await this._loadFont();
@@ -107,10 +107,10 @@ class AnalogueClockRenderer {
   }
 
   _createLighting(scene) {
-    const ambientLight = new THREE.AmbientLight(0xffffff, 2);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
     scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 3);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 5);
     directionalLight.position.set(5, 4, 10); // Positioned to cast a clear shadow
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 2048;
@@ -153,7 +153,7 @@ class AnalogueClockRenderer {
       color: 0xffd700,
       metalness: 0.8,
       roughness: 0.2,
-      side: THREE.BackSide,
+      side: THREE.DoubleSide,
     });
   }
 
@@ -251,6 +251,7 @@ class AnalogueClockRenderer {
 
     const geometry = new THREE.LatheGeometry(points, 48);
     const pin = new THREE.Mesh(geometry, this.goldMaterial);
+    pin.castShadow = true;
 
     // The lathe creates geometry along the Y axis. Rotate so it points toward the camera.
     pin.rotation.x = Math.PI / 2;
@@ -290,6 +291,7 @@ class AnalogueClockRenderer {
 
     const geometry = new THREE.LatheGeometry(points, 96);
     const bezel = new THREE.Mesh(geometry, this.goldMaterial);
+    bezel.castShadow = true;
 
     // The lathe creates geometry along the Y axis. Rotate so it points toward the camera.
     bezel.rotation.x = Math.PI / 2;
