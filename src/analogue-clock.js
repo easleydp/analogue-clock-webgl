@@ -1,3 +1,5 @@
+import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
+
 export class AnalogueClock {
   constructor(targetElement, options = {}) {
     if (!(targetElement instanceof HTMLElement)) {
@@ -58,6 +60,30 @@ export class AnalogueClock {
     this._onResize = this._onResize.bind(this);
     this.resizeObserver = new ResizeObserver(this._onResize);
     this.resizeObserver.observe(this.targetElement);
+
+    if (this.options.logo) {
+      (async () => {
+        await this._loadLogo();
+      })();
+    }
+  }
+
+  async _loadLogo() {
+    const loader = new SVGLoader();
+
+    loader.load(this.options.logo.svg, (data) => {
+      const shapesPoints = [];
+
+      data.paths.forEach((path) => {
+        const shapes = SVGLoader.createShapes(path); // Convert path to one or more shapes
+        shapes.forEach((s) => shapesPoints.push(s.getPoints())); // Send points only
+      });
+
+      this.worker.postMessage({
+        type: "logo",
+        payload: shapesPoints,
+      });
+    });
   }
 
   _onResize() {

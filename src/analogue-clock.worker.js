@@ -29,6 +29,8 @@ class AnalogueClockRenderer {
     this.secondHandAnimationPhase = "SETTLED"; // 'SETTLED', 'CREEPING', 'OVERSHOOT', 'RECOIL'
     this.targetSecondBaseAngle = 0; // Normal angle for the current (last ticked) second
     this.secondHandVisualAngle = 0; // Actual rendered angle of the second hand
+
+    this.logoEventTarget = new EventTarget();
   }
 
   async init(canvas, options, initialWidth, initialHeight, pixelRatio) {
@@ -299,7 +301,7 @@ class AnalogueClockRenderer {
     this.scene.add(bezel);
   }
 
-  _createFace() {
+  async _createFace() {
     if (!this.faceRadius) throw new Error("this.faceRadius not initialised");
     const radius = this.faceRadius;
     const faceGroup = new THREE.Group();
@@ -386,6 +388,50 @@ class AnalogueClockRenderer {
       brandSprite.scale.set(radius * 0.25, radius * 0.25, 1);
       faceGroup.add(brandSprite);
     }
+
+    // Create logo
+    if (this.options.logo) {
+      // Wait for the logo data to be received from the main thread
+      await new Promise((resolve) => {
+        if (this.logoData) {
+          resolve(); // Data has already been received
+        } else {
+          this.logoEventTarget.addEventListener(
+            "logoDataReceived",
+            () => resolve(),
+            {
+              once: true,
+            }
+          );
+        }
+      });
+
+      // logoData is array of arrays (shapes with shape points)
+      const shapes = this.logoData.map((points) => {
+        const vPoints = points.map((p) => new THREE.Vector2(p.x, p.y));
+        return new THREE.Shape(vPoints);
+      });
+
+      const geometry = new THREE.ShapeGeometry(shapes);
+      const scaleFactor = this.options.logo.scaleFactor * radius;
+      const material = new THREE.MeshBasicMaterial({
+        color: this.options.logo.colour,
+        side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.scale.set(scaleFactor, scaleFactor, 1);
+      // TODO: side-to-side position should be automatically centred rather than having to tweak this line:
+      mesh.position.x = radius * -0.06;
+      mesh.position.y = radius * 0.48;
+      mesh.rotation.z = Math.PI;
+      mesh.rotation.y = Math.PI;
+      faceGroup.add(mesh);
+    }
+  }
+
+  _logoDataReceived(logoData) {
+    this.logoData = logoData;
+    this.logoEventTarget.dispatchEvent(new Event("logoDataReceived"));
   }
 
   _createHands() {
@@ -764,6 +810,9 @@ self.onmessage = function (e) {
         .catch((err) =>
           console.error("Error initializing renderer in worker:", err)
         );
+      break;
+    case "logo":
+      renderer._logoDataReceived(payload);
       break;
     case "resize":
       renderer._onResize(payload.width, payload.height, payload.pixelRatio);
