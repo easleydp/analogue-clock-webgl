@@ -413,16 +413,15 @@ class AnalogueClockRenderer {
       });
 
       const geometry = new THREE.ShapeGeometry(shapes);
-      const scaleFactor = this.options.logo.scaleFactor * radius;
+      geometry.center();
       const material = new THREE.MeshBasicMaterial({
         color: this.options.logo.colour,
         side: THREE.DoubleSide,
       });
       const mesh = new THREE.Mesh(geometry, material);
+      const scaleFactor = this.options.logo.scaleFactor * radius;
       mesh.scale.set(scaleFactor, scaleFactor, 1);
-      // TODO: side-to-side position should be automatically centred rather than having to tweak this line:
-      mesh.position.x = radius * -0.06;
-      mesh.position.y = radius * 0.48;
+      mesh.position.y = radius * 0.42;
       mesh.rotation.z = Math.PI;
       mesh.rotation.y = Math.PI;
       faceGroup.add(mesh);
