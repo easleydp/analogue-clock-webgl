@@ -80,7 +80,7 @@ class AnalogueClockRenderer {
     // renderer size set in onResize
 
     await this._loadFont();
-    this._createGoldMaterial();
+    await this._createGoldMaterial();
     this._createBezel();
     this._createFace(); // depends on _createBezel() having been called to initialise this.faceRadius
     this._createPin(); // depends on _createBezel() having been called to initialise this.movingPartsMaxHeight
@@ -106,6 +106,97 @@ class AnalogueClockRenderer {
     const fontFace = new FontFace("Work Sans", `url(${fontUrl})`);
     await fontFace.load();
     self.fonts.add(fontFace);
+  }
+
+  /**
+   * Loads textures for cylinder.
+   * @returns Promise that resolves to a map of textures keyed by texture name.
+   *
+   * Note: Can't use the convenient `THREE.TextureLoader` in a web worker so we
+   * have to load the texture image resource files ourselves, convert them to
+   * image bitmaps, then pass each to the `THREE.Texture` constructor.
+   */
+  async _loadGoldTextures(goldType) {
+    let folder, fileStem, fileTails;
+    if (goldType === "damascus") {
+      folder = "Metal_Damascus_Steel_001_SD";
+      fileStem = "Metal_Damascus_Steel_001_";
+      fileTails = {
+        texture2AO: "ambientOcclusion.jpg",
+        textureMetal: "metallic.jpg",
+        textureRough: "roughness.jpg",
+        textureNormal: "normal.jpg",
+        textureHeight: "height.png",
+        textureColor: "basecolor.jpg",
+      };
+    } else if (goldType === "gold_1") {
+      folder = "gold_1";
+      fileStem = "gold_1_";
+      fileTails = {
+        texture2AO: "ambientOcclusion.jpeg",
+        textureMetal: "metallic.jpeg",
+        textureRough: "roughness.jpeg",
+        textureNormal: "normal.jpeg",
+        textureHeight: "height.jpeg",
+        textureColor: "baseColor.jpeg",
+      };
+    } else {
+      throw new Error(`Unrecognised goldType: ${goldType}`);
+    }
+
+    const promises = Object.entries(fileTails).map(async ([key, fileTail]) => {
+      return new Promise((resolve, reject) => {
+        if (!fileTail) {
+          resolve([key, null]);
+          return;
+        }
+        const path = new URL(
+          // NOTE: The `url` string parameter passed to the `URL` ctor must be static so
+          // it can be analysed by Vite. This means we can't use a variable!
+          `../textures/${folder}/${fileStem}${fileTail}`,
+          import.meta.url
+        ).href;
+        console.log({
+          url: `../textures/${folder}/${fileStem}${fileTail}`,
+          path,
+        });
+
+        fetch(path)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.blob();
+          })
+          .then((blob) => createImageBitmap(blob))
+          .then((imageBitmap) => {
+            const texture = new THREE.Texture(imageBitmap);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(2, 2);
+            texture.needsUpdate = true;
+            // ImageBitmaps are decoded with the origin at the top-left, which is what WebGL expects.
+            // Three.js's TextureLoader flips UVs for historical reasons with HTMLImageElement.
+            // We set flipY to false to prevent this inversion when using ImageBitmap.
+            texture.flipY = false;
+            resolve([key, texture]);
+          })
+          .catch((err) => {
+            reject(new Error(`Failed to load texture ${path}: ${err.message}`));
+          });
+      });
+    });
+
+    return new Promise((resolve, reject) => {
+      Promise.all(promises).then((results) => {
+        resolve(
+          results.reduce((accum, [key, texture]) => {
+            accum[key] = texture;
+            return accum;
+          }, {})
+        );
+      });
+    });
   }
 
   _createLighting(scene) {
@@ -149,14 +240,67 @@ class AnalogueClockRenderer {
     return sprite;
   }
 
-  _createGoldMaterial() {
-    // TODO: replace with PBR gold material
-    this.goldMaterial = new THREE.MeshStandardMaterial({
-      color: 0xffd700,
-      metalness: 0.8,
-      roughness: 0.2,
-      side: THREE.DoubleSide,
-    });
+  async _createGoldMaterial() {
+    // TODO: why are we having to set `side`` to BackSide (or Double)?
+    const simple = true;
+    if (simple) {
+      // Simple gold material
+      this.goldMaterial = new THREE.MeshStandardMaterial({
+        color: 0xffd700,
+        metalness: 0.8,
+        roughness: 0.2,
+        side: THREE.BackSide,
+      });
+    } else {
+      // PBR gold material
+      const goldType = "gold_2";
+      const textures = await this._loadGoldTextures(goldType);
+      if (goldType === "damascus") {
+        this.goldMaterial = new THREE.MeshStandardMaterial({
+          map: textures.textureColor,
+          normalMap: textures.textureNormal,
+          // How much the normal map affects the material. Typical ranges are 0-1. Default is a Vector2 set to (1,1).
+          normalScale: new THREE.Vector2(1, 1),
+          displacementMap: textures.textureHeight,
+          displacementScale: 0.0, // How much the displacement map affects the mesh
+          displacementBias: 0, // Added to the scaled sample of the displacement map
+          roughnessMap: textures.textureRough,
+          roughness: 0.0, // 0.0 means perfectly shiny, 1.0 means fully matt
+          aoMap: textures.texture2AO,
+          aoMapIntensity: 1, // Intensity of the ambient occlusion effect. Range is 0-1, where 0 disables ambient occlusion
+          metalnessMap: textures.textureMetal,
+          // Non-metallic materials such as wood or stone use 0.0, metallic use 1.0.
+          // If metalnessMap is also provided, both values are multiplied.
+          // When the product is 1.0 there is no diffuse color (the color comes from reflections).
+          metalness: 0.5,
+          color: 0xffd700, // Base color, texture will dominate
+          side: THREE.BackSide,
+          //wireframe: true,
+        });
+      } else {
+        this.goldMaterial = new THREE.MeshStandardMaterial({
+          map: textures.textureColor,
+          normalMap: textures.textureNormal,
+          // How much the normal map affects the material. Typical ranges are 0-1. Default is a Vector2 set to (1,1).
+          normalScale: new THREE.Vector2(1, 1),
+          displacementMap: textures.textureHeight,
+          displacementScale: 0.0, // How much the displacement map affects the mesh
+          displacementBias: 0, // Added to the scaled sample of the displacement map
+          roughnessMap: textures.textureRough,
+          roughness: 0.5, // 0.0 means perfectly shiny, 1.0 means fully matt
+          aoMap: textures.texture2AO,
+          aoMapIntensity: 1, // Intensity of the ambient occlusion effect. Range is 0-1, where 0 disables ambient occlusion
+          metalnessMap: textures.textureMetal,
+          // Non-metallic materials such as wood or stone use 0.0, metallic use 1.0.
+          // If metalnessMap is also provided, both values are multiplied.
+          // When the product is 1.0 there is no diffuse color (the color comes from reflections).
+          metalness: 0.8,
+          color: 0xffd700, // Base color, texture will dominate
+          side: THREE.BackSide,
+          //wireframe: true,
+        });
+      }
+    }
   }
 
   /**
