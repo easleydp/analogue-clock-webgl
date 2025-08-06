@@ -101,8 +101,10 @@ class AnalogueClockRenderer {
    * Hence, we need to explicitly load the web font.
    */
   async _loadFont() {
-    const fontUrl =
-      "https://fonts.gstatic.com/s/worksans/v23/QGY_z_wNahGAdqQ43RhVcIgYT2Xz5u32KxfXBi8Jpg.woff2";
+    const fontUrl = new URL(
+      "../fonts/WorkSans/WorkSans-Light.ttf",
+      import.meta.url
+    ).href;
     const fontFace = new FontFace("Work Sans", `url(${fontUrl})`);
     await fontFace.load();
     self.fonts.add(fontFace);
