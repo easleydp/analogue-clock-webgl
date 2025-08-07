@@ -37,13 +37,13 @@ class AnalogueClockRenderer {
     this.pixelRatio = pixelRatio;
     // TODO: review these options (are they all actually used?)
     this.options = {
-      textColor: "#1C1C1C",
-      markerColor: "#1C1C1C",
+      textColor: "#080808",
+      markerColor: "#202020",
       fontFamily: '"Work Sans", "Trebuchet MS", sans-serif',
       faceColor: "#FFFFFF",
-      secondHandColor: "rgb(255, 0, 0)",
-      minuteHandColor: "#1C1C1C",
-      hourHandColor: "#1C1C1C",
+      secondHandColor: "#BB0000",
+      minuteHandColor: "#101010",
+      hourHandColor: "#101010",
       romanNumerals: false,
       brand: null, // e.g. "Acme". Displayed as static text on the clock face, half way between the centre pin and the '12'.
       secondHandPhysics: {
@@ -505,7 +505,7 @@ class AnalogueClockRenderer {
       const numeral = this._createTextSprite(h.toString(), {
         fontFamily: this.options.fontFamily,
         color: this.options.textColor,
-        fontSize: 210,
+        fontSize: 240,
       });
 
       numeral.position.x = Math.cos(angle) * numeralsRadius;
